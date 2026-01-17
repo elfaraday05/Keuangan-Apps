@@ -15,12 +15,14 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
+    <!-- Chart.js for Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
         body { font-family: 'Inter', sans-serif; }
-        /* Kustomisasi scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -55,7 +57,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
         // Ikon SVG Sederhana (Custom)
         const Icons = {
@@ -63,10 +65,11 @@
             RefreshCw: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
             ArrowUpRight: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>,
             ArrowDownRight: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m7 7 10 10"/><path d="M17 7v10H7"/></svg>,
-            Save: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+            PieChart: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>,
+            Filter: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
         };
 
-        // URL Database Google Sheets (Apps Script)
         const API_URL = "https://script.google.com/macros/s/AKfycbzH_cIqnzoPGz-j82iVxknDcrPYzhH9KWyIHAUVjx38E9pQgInqHaVeUQnqQtEHhc0/exec";
 
         const formatRupiah = (number) => {
@@ -79,7 +82,6 @@
 
         const TransactionItem = ({ item }) => {
             const isExpense = item.type === 'expense';
-            // Sesuaikan deskripsi dengan nama kolom di sheet
             const displayNote = item.description || item.note || "Tanpa Keterangan";
             
             return (
@@ -102,17 +104,87 @@
             );
         };
 
+        const ExpenseChart = ({ data }) => {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current || data.length === 0) return;
+
+                // Proses data untuk grafik (Top 5 Pengeluaran)
+                const expenses = data.filter(t => t.type === 'expense');
+                const grouped = expenses.reduce((acc, curr) => {
+                    const desc = curr.description || "Lainnya";
+                    acc[desc] = (acc[desc] || 0) + Number(curr.amount);
+                    return acc;
+                }, {});
+
+                const labels = Object.keys(grouped).sort((a, b) => grouped[b] - grouped[a]).slice(0, 5);
+                const values = labels.map(l => grouped[l]);
+
+                if (chartRef.current) {
+                    chartRef.current.destroy();
+                }
+
+                const ctx = canvasRef.current.getContext('2d');
+                chartRef.current = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: values,
+                            backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+                            borderWidth: 2,
+                            borderColor: '#ffffff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }
+                        },
+                        cutout: '65%'
+                    }
+                });
+
+                return () => {
+                    if (chartRef.current) chartRef.current.destroy();
+                };
+            }, [data]);
+
+            return (
+                <div className="p-4 bg-white rounded-3xl border border-slate-100 shadow-sm mb-6 animate-fade-in-up">
+                    <h2 className="text-sm font-bold text-slate-500 mb-4 uppercase tracking-wider flex items-center gap-2">
+                        <Icons.PieChart /> Alokasi Pengeluaran
+                    </h2>
+                    <div className="relative h-64 flex justify-center">
+                        {data.filter(t => t.type === 'expense').length > 0 ? (
+                            <canvas ref={canvasRef}></canvas>
+                        ) : (
+                            <div className="flex items-center justify-center text-slate-300 italic text-sm text-center">
+                                Belum ada data pengeluaran untuk periode ini
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
         const App = () => {
             const [transactions, setTransactions] = useState([]);
             const [loading, setLoading] = useState(true);
             const [submitting, setSubmitting] = useState(false);
             const [activeTab, setActiveTab] = useState('add');
 
+            // State Filter
+            const [filterStart, setFilterStart] = useState('');
+            const [filterEnd, setFilterEnd] = useState('');
+
             const [formData, setFormData] = useState({
                 type: 'expense',
                 amount: '',
                 category: 'Umum', 
-                description: '', // Kolom input disesuaikan dengan 'description' di sheet
+                description: '',
                 date: new Date().toISOString().split('T')[0]
             });
 
@@ -144,7 +216,6 @@
                         body: JSON.stringify({ action: 'add', ...formData })
                     });
                     
-                    // Update state lokal untuk memberikan feedback instan kepada user
                     setTransactions([{ ...formData, timestamp: new Date() }, ...transactions]);
                     setFormData({ ...formData, amount: '', description: '' });
                     setActiveTab('list');
@@ -156,11 +227,22 @@
                 }
             };
 
+            // Logika Filtering
+            const filteredData = useMemo(() => {
+                return transactions.filter(t => {
+                    const tDate = new Date(t.date).getTime();
+                    const start = filterStart ? new Date(filterStart).getTime() : 0;
+                    const end = filterEnd ? new Date(filterEnd).getTime() : Infinity;
+                    // Reset jam ke 00:00 untuk perbandingan tanggal yang akurat
+                    return tDate >= start && tDate <= end;
+                });
+            }, [transactions, filterStart, filterEnd]);
+
             const summary = useMemo(() => {
-                const income = transactions.filter(t => t.type === 'income').reduce((a, b) => a + Number(b.amount), 0);
-                const expense = transactions.filter(t => t.type === 'expense').reduce((a, b) => a + Number(b.amount), 0);
+                const income = filteredData.filter(t => t.type === 'income').reduce((a, b) => a + Number(b.amount), 0);
+                const expense = filteredData.filter(t => t.type === 'expense').reduce((a, b) => a + Number(b.amount), 0);
                 return { income, expense, balance: income - expense };
-            }, [transactions]);
+            }, [filteredData]);
 
             return (
                 <div className="max-w-md mx-auto min-h-screen bg-white shadow-2xl overflow-hidden relative">
@@ -168,7 +250,7 @@
                     <div className="bg-gradient-to-r from-blue-600 to-indigo-500 p-8 pb-24 rounded-b-[2.5rem] shadow-lg">
                         <div className="flex justify-between items-center text-white mb-6">
                             <div>
-                                <p className="text-blue-100 text-sm">Total Saldo</p>
+                                <p className="text-blue-100 text-sm">Saldo Periode Ini</p>
                                 <h1 className="text-3xl font-bold">{formatRupiah(summary.balance)}</h1>
                             </div>
                             <button onClick={fetchData} className="bg-white/20 hover:bg-white/30 p-2 rounded-full backdrop-blur-sm transition">
@@ -179,6 +261,7 @@
 
                     {/* Content Area */}
                     <div className="px-5 -mt-16 relative z-20 pb-20">
+                        
                         {/* Summary Cards */}
                         <div className="grid grid-cols-2 gap-4 mb-6">
                             <div className="bg-white p-4 rounded-2xl shadow-md border border-emerald-100 flex flex-col items-center">
@@ -193,59 +276,99 @@
                             </div>
                         </div>
 
-                        {/* Navigation Tabs */}
-                        <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-6">
-                            <button onClick={() => setActiveTab('add')} className={`flex-1 py-2 text-sm font-semibold rounded-xl transition ${activeTab === 'add' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Input Data</button>
-                            <button onClick={() => setActiveTab('list')} className={`flex-1 py-2 text-sm font-semibold rounded-xl transition ${activeTab === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Riwayat</button>
+                        {/* Date Filters Area */}
+                        <div className="bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-blue-50 shadow-sm mb-6 flex items-center gap-3">
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-tighter">Dari</label>
+                                <input 
+                                    type="date" 
+                                    value={filterStart} 
+                                    onChange={(e) => setFilterStart(e.target.value)}
+                                    className="w-full text-xs p-1.5 border-none bg-slate-50 rounded-lg outline-none focus:ring-1 focus:ring-blue-200" 
+                                />
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-tighter">Sampai</label>
+                                <input 
+                                    type="date" 
+                                    value={filterEnd} 
+                                    onChange={(e) => setFilterEnd(e.target.value)}
+                                    className="w-full text-xs p-1.5 border-none bg-slate-50 rounded-lg outline-none focus:ring-1 focus:ring-blue-200" 
+                                />
+                            </div>
+                            <button 
+                                onClick={() => {setFilterStart(''); setFilterEnd('')}}
+                                className="mt-4 p-2 text-slate-300 hover:text-rose-400 transition"
+                                title="Reset Filter"
+                            >
+                                <Icons.Plus /> 
+                            </button>
                         </div>
 
-                        {activeTab === 'add' ? (
+                        {/* Navigation Tabs */}
+                        <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-6">
+                            <button onClick={() => setActiveTab('add')} className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${activeTab === 'add' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>INPUT</button>
+                            <button onClick={() => setActiveTab('list')} className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${activeTab === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>RIWAYAT</button>
+                            <button onClick={() => setActiveTab('chart')} className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${activeTab === 'chart' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>ANALITIK</button>
+                        </div>
+
+                        {/* CONTENT: INPUT */}
+                        {activeTab === 'add' && (
                             <form onSubmit={handleSubmit} className="space-y-4 animate-fade-in-up">
-                                {/* Type Selector */}
                                 <div className="grid grid-cols-2 gap-3">
                                     <div onClick={() => setFormData({...formData, type: 'income'})} className={`cursor-pointer border-2 rounded-xl p-3 text-center font-bold transition-all ${formData.type === 'income' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-transparent bg-slate-50 text-slate-400'}`}>Pemasukan</div>
                                     <div onClick={() => setFormData({...formData, type: 'expense'})} className={`cursor-pointer border-2 rounded-xl p-3 text-center font-bold transition-all ${formData.type === 'expense' ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-transparent bg-slate-50 text-slate-400'}`}>Pengeluaran</div>
                                 </div>
-                                
-                                {/* Amount Input */}
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 ml-1 mb-1 block uppercase tracking-wider">Jumlah (Rp)</label>
-                                    <input type="number" required value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none transition" placeholder="Contoh: 75000" />
+                                    <label className="text-xs font-bold text-slate-500 ml-1 mb-1 block uppercase">Jumlah (Rp)</label>
+                                    <input type="number" required value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-400 outline-none transition" />
                                 </div>
-
-                                {/* Description Input (Maps to 'description' column in Sheets) */}
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 ml-1 mb-1 block uppercase tracking-wider">Keterangan / Deskripsi</label>
-                                    <input type="text" required value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none transition" placeholder="Contoh: Makan siang, Gaji Bulanan" />
+                                    <label className="text-xs font-bold text-slate-500 ml-1 mb-1 block uppercase">Keterangan</label>
+                                    <input type="text" required value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-400 outline-none transition" />
                                 </div>
-
-                                {/* Date Input */}
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 ml-1 mb-1 block uppercase tracking-wider">Tanggal</label>
-                                    <input type="date" required value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none transition" />
+                                    <label className="text-xs font-bold text-slate-500 ml-1 mb-1 block uppercase">Tanggal</label>
+                                    <input type="date" required value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-400 outline-none transition" />
                                 </div>
-
-                                {/* Submit Button */}
                                 <button type="submit" disabled={submitting} className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-xl hover:bg-blue-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70">
                                     {submitting ? <div className="loader"></div> : <><Icons.Save /> Simpan ke Cloud</>}
                                 </button>
                             </form>
-                        ) : (
-                            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden min-h-[400px]">
+                        )}
+
+                        {/* CONTENT: RIWAYAT */}
+                        {activeTab === 'list' && (
+                            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden min-h-[400px] animate-fade-in-up">
                                 {loading ? (
-                                    <div className="flex flex-col justify-center items-center h-64 gap-3">
-                                        <div className="loader"></div>
-                                        <p className="text-sm text-slate-400 animate-pulse">Sinkronisasi data...</p>
-                                    </div>
-                                ) : transactions.length === 0 ? (
-                                    <div className="text-center p-16">
-                                        <p className="text-slate-400 italic">Belum ada transaksi tercatat.</p>
-                                    </div>
+                                    <div className="flex flex-col justify-center items-center h-64 gap-3"><div className="loader"></div></div>
+                                ) : filteredData.length === 0 ? (
+                                    <div className="text-center p-16"><p className="text-slate-400 italic">Data tidak ditemukan.</p></div>
                                 ) : (
                                     <div className="divide-y divide-slate-50">
-                                        {transactions.map((t, i) => <TransactionItem key={i} item={t} />)}
+                                        {filteredData.map((t, i) => <TransactionItem key={i} item={t} />)}
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+                        {/* CONTENT: ANALITIK */}
+                        {activeTab === 'chart' && (
+                            <div className="space-y-6 animate-fade-in-up">
+                                <ExpenseChart data={filteredData} />
+                                <div className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm">
+                                    <h2 className="text-sm font-bold text-slate-500 mb-4 uppercase tracking-wider">Statistik Periode</h2>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-slate-400">Rata-rata Harian</span>
+                                            <span className="font-bold">{formatRupiah(summary.expense / (filteredData.length || 1))}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-slate-400">Total Transaksi</span>
+                                            <span className="font-bold">{filteredData.length}</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
